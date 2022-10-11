@@ -656,7 +656,7 @@ static BoAndFramebuffer_t* getOrCreateBoAndFramebuffer(struct gbm_bo* bo) {
                                             &boAndFramebuffer->framebufferId, flags);
 
     if (result) {
-        printf("Failed to cleate framebuffer: %s\n", strerror(errno));
+        fprintf(stderr, "Failed to create framebuffer: %s\n", strerror(errno));
         free(boAndFramebuffer);
         return NULL;
     }
