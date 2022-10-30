@@ -26,7 +26,8 @@ Then you can build like that:
    user@ubuntu:~# JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64/ cmake -DBUILD_SHARED_LIBS=ON ../ 
    ```
    You can add `-DPRE_MULTIPLY_CURSOR=ON` option if your cursor plane has `pixel blend mode` property set to
-   `Pre-multiplied` by default.
+   `Pre-multiplied` by default. You can also configure display scale factor by `SCALE_FACTOR` option, it takes float
+   number as input (`-DSCALE_FACTOR="1.75"`, for example).
 3. Build
    ```console
    user@ubuntu:~# make

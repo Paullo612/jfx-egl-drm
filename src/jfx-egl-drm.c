@@ -808,6 +808,8 @@ jint doGetDepth(jint idx) {
     return 32;
 }
 
+jfloat doGetScale(jint idx);
+
 /**
  * Get screen width
  */
@@ -821,7 +823,7 @@ jint doGetWidth(jint idx) {
         return 0;
     }
 
-    return handle->mode.hdisplay;
+    return (float) handle->mode.hdisplay / doGetScale(idx);
 }
 
 /**
@@ -837,7 +839,7 @@ jint doGetHeight(jint idx) {
         return 0;
     }
 
-    return handle->mode.vdisplay;
+    return (float) handle->mode.vdisplay / doGetScale(idx);
 }
 
 /**
@@ -891,8 +893,7 @@ jint doGetNativeFormat(jint idx) {
 jfloat doGetScale(jint idx) {
     (void) idx;
 
-    // TODO: Maybe this can be calculated by dividing screen DPI to default DPI (96).
-    return 1.;
+    return SCALE_FACTOR;
 }
 
 // TODO: We can actually implement cursor ourelves using free plane. This will allow us to show cursor on systems
@@ -946,6 +947,9 @@ void doSetLocation(jint x, jint y) {
     if (!handle) {
         return;
     }
+
+    x *= doGetScale(0);
+    y *= doGetScale(0);
 
     int error = drmModeMoveCursor(handle->fd, handle->crtcId, x, y);
     if (error) {
