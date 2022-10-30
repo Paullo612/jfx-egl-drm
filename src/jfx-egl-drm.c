@@ -221,6 +221,89 @@ static drmModeCrtcPtr findCrtc(
     return NULL;
 }
 
+static uint64_t getPropertyValue(
+        const char* displayId,
+        int fd,
+        uint32_t objectId,
+        uint32_t objectType,
+        DrmProperties_t* properties,
+        const char *name) {
+    for (uint32_t i = 0; i < properties->count; ++i) {
+        if (strcmp(properties->properties[i]->name, name) == 0) {
+            drmModeObjectPropertiesPtr objectProperties = drmModeObjectGetProperties(fd, objectId, objectType);
+            if (!objectProperties) {
+                fprintf(stderr, "Failed to get object properties(display id: %s, object id: %i): %s\n",
+                        displayId, objectId, strerror(errno));
+                return 0;
+            }
+
+            uint64_t result = objectProperties->prop_values[i];
+            drmModeFreeObjectProperties(objectProperties);
+            return result;
+        }
+    }
+
+    return 0;
+}
+
+typedef struct Modifiers {
+    uint64_t* modifiers;
+    unsigned int modifiersCount;
+} Modifiers_t;
+
+static Modifiers_t getPlaneFormatModifiers(int fd, uint32_t blobId, uint32_t drmFormat) {
+    drmModePropertyBlobPtr blob = drmModeGetPropertyBlob(fd, blobId);
+
+    Modifiers_t result = {
+        .modifiers = NULL,
+        .modifiersCount = 0
+    };
+
+    if (!blob) {
+        fprintf(stderr, "drmModeGetPropertyBlob failed: %s\n", strerror(errno));
+        return result;
+    }
+
+    struct drm_format_modifier_blob* modifiersBlob = blob->data;
+
+    uint32_t* blobFormats = (uint32_t *)(((char *)modifiersBlob) + modifiersBlob->formats_offset);
+    struct drm_format_modifier* blobModifiers =
+            (struct drm_format_modifier *) (((char *)modifiersBlob) + modifiersBlob->modifiers_offset);
+
+    for (unsigned int formatIndex = 0; formatIndex < modifiersBlob->count_formats; ++formatIndex) {
+        if (blobFormats[formatIndex] != drmFormat) {
+            continue;
+        }
+
+        for (unsigned int modifierIndex = 0; modifierIndex < modifiersBlob->count_modifiers; ++modifierIndex) {
+            struct drm_format_modifier* modifier = &blobModifiers[modifierIndex];
+
+            if ((formatIndex < modifier->offset) || (formatIndex > modifier->offset + 63)) {
+                continue;
+            }
+
+            if (!(modifier->formats & (1 << (formatIndex - modifier->offset)))) {
+                continue;
+            }
+
+            ++result.modifiersCount;
+            uint64_t* oldModifiers = result.modifiers;
+            result.modifiers = realloc(result.modifiers, result.modifiersCount * sizeof(*result.modifiers));
+            if (!result.modifiers) {
+                fprintf(stderr, "realloc failed: %s\n", strerror(errno));
+                free(oldModifiers);
+                result.modifiersCount = 0;
+                goto out;
+            }
+            result.modifiers[result.modifiersCount - 1] = modifier->modifier;
+        }
+    }
+
+out:
+    drmModeFreePropertyBlob(blob);
+    return result;
+}
+
 /**
  * Get a handle to the native window (without specifying what window is)
  *
@@ -342,10 +425,44 @@ jlong getNativeWindowHandle(const char* displayId) {
         goto err_free_plane;
     }
 
-    uint64_t modifier = DRM_FORMAT_MOD_LINEAR;
-    struct gbm_surface* surface = gbm_surface_create_with_modifiers(
-                gbmDevice, mode->hdisplay, mode->vdisplay, DRM_FORMAT_ARGB8888, &modifier, 1
+    uint64_t inFormatsId = getPropertyValue(
+                displayId,
+                fd,
+                plane->plane_id,
+                DRM_MODE_OBJECT_PLANE,
+                &planeProperties,
+                "IN_FORMATS"
     );
+    Modifiers_t modifiers = {
+        .modifiers = NULL,
+        .modifiersCount = 0
+    };
+
+    if (inFormatsId) {
+        modifiers = getPlaneFormatModifiers(fd, inFormatsId, DRM_FORMAT_ARGB8888);
+    }
+
+    struct gbm_surface* surface;
+
+    if (modifiers.modifiersCount) {
+        surface = gbm_surface_create_with_modifiers(
+                    gbmDevice,
+                    mode->hdisplay,
+                    mode->vdisplay,
+                    DRM_FORMAT_ARGB8888,
+                    modifiers.modifiers,
+                    modifiers.modifiersCount
+        );
+        free(modifiers.modifiers);
+    } else {
+        surface = gbm_surface_create(
+                    gbmDevice,
+                    mode->hdisplay,
+                    mode->vdisplay,
+                    DRM_FORMAT_ARGB8888,
+                    GBM_BO_USE_RENDERING | GBM_BO_USE_SCANOUT
+        );
+    }
 
     if (!surface) {
         fprintf(stderr, "Failed to create GBM surface for display with id %s: %s\n",
