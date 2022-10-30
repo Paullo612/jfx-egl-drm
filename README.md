@@ -38,12 +38,14 @@ Then you can build like that:
 This library uses DRM directly, so, first of all, you should stop X server, or Wayland compositor, or Display Manager,
 or anything that uses DRM exclusively. 
 
-This is Monocle EGL backend, so, `glass.platform` should be `Monocle` and `monocle.platform` should be `EGL`. Also, you
-have to specify path to just build library using `monocle.egl.lib` property: 
+This is Monocle EGL backend, so, `glass.platform` should be `Monocle` and `monocle.platform` should be `EGL`. `use.egl`
+should be set to `true` to tell OpenJFX that it should do a window composition. Also, you have to specify path to just
+build library using `monocle.egl.lib` property: 
 ```console
 root@ubuntu:~# java -Dglass.platform=Monocle \
                     -Dmonocle.platform=EGL \
                     -Dmonocle.egl.lib=/path/to/libjfx-egl-drm.so \
+                    -Duse.egl=true \
                     -jar your-app.jar
 ```
 
